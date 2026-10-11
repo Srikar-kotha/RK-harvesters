@@ -306,6 +306,11 @@ function applyRoleAccess() {
   });
 }
 
+function deleteCell(type, id, label) {
+  if (!isOwner()) return "";
+  return `<button class="row-btn" data-delete-${type}="${id}" aria-label="${label}">×</button>`;
+}
+
 function openMenu() {
   nodes.sidebar.classList.add("is-open");
   nodes.menuOverlay.classList.remove("is-hidden");
@@ -465,7 +470,7 @@ function renderWorkRows() {
       <td>${rupees(row.paid)}</td>
       <td class="${row.total - row.paid > 0 ? "gold" : "green"}">${rupees(row.total - row.paid)}</td>
       <td>${esc(row.by)}</td>
-      <td><button class="row-btn" data-delete-work="${row.id}" aria-label="Delete work entry">×</button></td>
+      <td>${deleteCell("work", row.id, "Delete work entry")}</td>
     </tr>
   `).join("") : `<tr><td class="empty" colspan="11">No work entries found.</td></tr>`;
 }
@@ -486,7 +491,7 @@ function renderExpenses() {
               <td>${esc(expense.note)}</td>
               <td class="red">${rupees(expense.amount)}</td>
               <td>${esc(expense.by)}</td>
-              <td><button class="row-btn" data-delete-expense="${expense.id}" aria-label="Delete expense">×</button></td>
+              <td>${deleteCell("expense", expense.id, "Delete expense")}</td>
             </tr>
           `).join("") : `<tr><td class="empty" colspan="7">No expenses recorded.</td></tr>`}
         </tbody>
@@ -512,9 +517,9 @@ function renderMachines() {
 }
 
 function renderStaff() {
-  setHeader("Staff", "Login users");
+  setHeader("Operators", "Owner-managed signups");
   nodes.screen.innerHTML = `
-    ${pageHead("Staff", "Create local users for this browser-based app.", `<button class="primary-btn" data-action="new-staff">+ Add Staff</button>`)}
+    ${pageHead("Operator Signup", "Only the owner can create operator login accounts.", `<button class="primary-btn" data-action="new-staff">+ Sign Up Operator</button>`)}
     <div class="table-wrap">
       <table>
         <thead><tr><th>Name</th><th>Username</th><th>Role</th><th></th></tr></thead>
@@ -524,7 +529,7 @@ function renderStaff() {
               <td>${esc(user.name)}</td>
               <td>${esc(user.username)}</td>
               <td><span class="badge">${esc(user.role)}</span></td>
-              <td>${user.id === 1 ? "" : `<button class="row-btn" data-delete-staff="${user.id}" aria-label="Delete staff">×</button>`}</td>
+              <td>${user.role === "owner" ? "" : `<button class="row-btn" data-delete-staff="${user.id}" aria-label="Delete staff">×</button>`}</td>
             </tr>
           `).join("")}
         </tbody>
@@ -616,11 +621,12 @@ function showMachineForm() {
 }
 
 function showStaffForm() {
-  openModal(formShell("New Staff User", `
+  openModal(formShell("Sign Up Operator", `
     <label>Name<input name="name" required></label>
-    <label>Username<input name="username" required></label>
-    <label>Password<input name="password" required></label>
-    <label>Role<select name="role"><option>operator</option><option>owner</option></select></label>
+    <label>Username<input name="username" autocomplete="off" required></label>
+    <label>Password<input name="password" type="password" autocomplete="new-password" minlength="4" required></label>
+    <label>Confirm Password<input name="confirmPassword" type="password" autocomplete="new-password" minlength="4" required></label>
+    <input name="role" type="hidden" value="operator">
   `, "staff"));
 }
 
@@ -631,7 +637,7 @@ async function submitForm(form) {
     const acres = Number(data.acres);
     const rate = Number(data.rate);
     const total = acres * rate;
-    db.work.unshift({
+    const row = {
       id: Date.now(),
       ...data,
       acres,
@@ -677,14 +683,36 @@ async function submitForm(form) {
   }
 
   if (form.dataset.form === "staff") {
-    const row = { id: Date.now(), ...data };
+    const username = data.username.trim();
+    const name = data.name.trim();
+    if (data.password !== data.confirmPassword) {
+      toast("Passwords do not match");
+      return;
+    }
+    if (db.users.some(user => user.username.toLowerCase() === username.toLowerCase())) {
+      toast("Username already exists");
+      return;
+    }
+
+    const row = {
+      id: Date.now(),
+      name,
+      username,
+      password: data.password,
+      role: "operator"
+    };
     if (supabaseDb) {
-      const { error } = await supabaseDb.from("app_users").insert(row);
+      const { error } = await supabaseDb.from("app_users").insert({
+        name: row.name,
+        username: row.username,
+        password: row.password,
+        role: "operator"
+      });
       if (error) throw error;
     } else {
       db.users.push(row);
     }
-    toast("Staff user saved");
+    toast("Operator signup complete");
     currentScreen = "staff";
   }
 
@@ -692,6 +720,15 @@ async function submitForm(form) {
   save();
   closeModal();
   showScreen(currentScreen);
+}
+
+async function deleteRow(table, id) {
+  if (supabaseDb) {
+    const { error } = await supabaseDb.from(table).delete().eq("id", id);
+    if (error) throw error;
+    await reloadData();
+  }
+  save();
 }
 
 function exportData() {
@@ -750,46 +787,63 @@ nodes.menuItems.forEach(item => {
   item.addEventListener("click", () => showScreen(item.dataset.screen));
 });
 
-document.addEventListener("click", event => {
+document.addEventListener("click", async event => {
   const target = event.target.closest("button");
   if (!target) return;
 
-  if (target.dataset.action === "new-work") showWorkForm();
-  if (target.dataset.action === "new-expense") showExpenseForm();
-  if (target.dataset.action === "new-machine" && requireOwner()) showMachineForm();
-  if (target.dataset.action === "new-staff" && requireOwner()) showStaffForm();
-  if (target.dataset.action === "close-modal") closeModal();
-  if (target.dataset.action === "export" && requireOwner()) exportData();
-  if (target.dataset.action === "reset" && requireOwner()) resetData();
-  if (target.dataset.jump) showScreen(target.dataset.jump);
+  try {
+    if (target.dataset.action === "new-work") showWorkForm();
+    if (target.dataset.action === "new-expense") showExpenseForm();
+    if (target.dataset.action === "new-machine" && requireOwner()) showMachineForm();
+    if (target.dataset.action === "new-staff" && requireOwner()) showStaffForm();
+    if (target.dataset.action === "close-modal") closeModal();
+    if (target.dataset.action === "export" && requireOwner()) exportData();
+    if (target.dataset.action === "reset" && requireOwner()) resetData();
+    if (target.dataset.jump) showScreen(target.dataset.jump);
 
-  if (target.dataset.deleteWork) {
-    db.work = db.work.filter(row => row.id !== Number(target.dataset.deleteWork));
-    save();
-    showScreen("work");
-  }
+    if (target.dataset.deleteWork) {
+      if (!requireOwner()) return;
+      const id = Number(target.dataset.deleteWork);
+      db.work = db.work.filter(row => row.id !== id);
+      await deleteRow("work_entries", id);
+      showScreen("work");
+    }
 
-  if (target.dataset.deleteExpense) {
-    db.expenses = db.expenses.filter(row => row.id !== Number(target.dataset.deleteExpense));
-    save();
-    showScreen("expenses");
-  }
+    if (target.dataset.deleteExpense) {
+      if (!requireOwner()) return;
+      const id = Number(target.dataset.deleteExpense);
+      db.expenses = db.expenses.filter(row => row.id !== id);
+      await deleteRow("expenses", id);
+      showScreen("expenses");
+    }
 
-  if (target.dataset.deleteStaff) {
-    if (!requireOwner()) return;
-    db.users = db.users.filter(row => row.id !== Number(target.dataset.deleteStaff));
-    save();
-    showScreen("staff");
+    if (target.dataset.deleteStaff) {
+      if (!requireOwner()) return;
+      const id = Number(target.dataset.deleteStaff);
+      db.users = db.users.filter(row => row.id !== id);
+      await deleteRow("app_users", id);
+      showScreen("staff");
+    }
+  } catch (error) {
+    toast(`Supabase error: ${error.message}`);
+    await reloadData();
+    showScreen(currentScreen);
   }
 
 });
 
-document.addEventListener("submit", event => {
+document.addEventListener("submit", async event => {
   const form = event.target.closest("[data-form]");
   if (!form) return;
   event.preventDefault();
   if (["machine", "staff"].includes(form.dataset.form) && !requireOwner()) return;
-  submitForm(form);
+  try {
+    await submitForm(form);
+  } catch (error) {
+    toast(`Save failed: ${error.message}`);
+    await reloadData();
+    showScreen(currentScreen);
+  }
 });
 
 document.addEventListener("change", event => {

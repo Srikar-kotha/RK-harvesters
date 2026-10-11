@@ -33,8 +33,8 @@ const defaultHarvesterImage = "https://www.malkitagrotech.com/images/products/ma
 
 const seedData = {
   users: [
-    { id: 1, name: "Owner", username: "owner", password: "1234", role: "owner" },
-    { id: 2, name: "Ramesh", username: "ramesh", password: "1234", role: "operator" }
+    { id: 1, name: "Owner", username: "owner", password: "change_me_owner", role: "owner" },
+    { id: 2, name: "Ramesh", username: "ramesh", password: "change_me_operator", role: "operator" }
   ],
   customers: [
     { id: 101, name: "Mahesh Farms", mobile: "9876543210", village: "Mandya" },
@@ -168,7 +168,7 @@ function App() {
   const [modal, setModal] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [toast, setToast] = useState("");
-  const [loginForm, setLoginForm] = useState({ username: "owner", password: "1234" });
+  const [loginForm, setLoginForm] = useState({ username: "owner", password: "" });
   const [loading, setLoading] = useState(false);
 
   const isOwner = currentUser?.role === "owner";
@@ -440,7 +440,7 @@ function LoginView({ form, loading, onChange, onLogin, toast }) {
           <button className="primary-btn" disabled={loading}>{loading ? "Checking..." : "Login"}</button>
         </form>
         <div className="login-footer">
-          <span><ShieldCheck size={16} /> Owner: owner / 1234</span>
+          <span><ShieldCheck size={16} /> Owner access required for management.</span>
           <span>Operator access is limited to work and expenses.</span>
         </div>
       </section>

@@ -2,9 +2,14 @@
 
 Responsive dashboard for RK Harvester work entries, collections, machines, staff, and expenses.
 
-## Open
+## Run
 
-Open `index.html` in a browser, or run a simple local server from this folder.
+```bash
+npm install
+npm run dev
+```
+
+Then open the local Vite URL shown in the terminal.
 
 ## Supabase Setup
 
@@ -16,6 +21,8 @@ Open `index.html` in a browser, or run a simple local server from this folder.
 
 The app uses `supabase/config.js` as the only browser config file. The Supabase project URL should look like `https://your-project.supabase.co`, not the REST endpoint ending in `/rest/v1`.
 
+Machine cards support an optional `image_url` column. Re-run `supabase/schema.sql` to add it to an existing project and seed the default harvester image.
+
 ## Login
 
 - Owner: `owner` / `1234`
@@ -23,7 +30,7 @@ The app uses `supabase/config.js` as the only browser config file. The Supabase 
 
 ## Roles
 
-- `owner`: dashboard, work, expenses, machines, operator signup, backup, deletes, export/import/reset.
+- `owner`: dashboard, work, expenses, machines, operator signup, backup, deletes, and export.
 - `operator`: work entries and expenses only.
 
 Operator signup is owner-only. The app always creates new signups with the `operator` role.
